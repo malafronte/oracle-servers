@@ -1,0 +1,72 @@
+# ── Segreti e credenziali ──────────────────────────────────────────
+# Cartella che contiene chiavi SSH, IP, password e token
+**/.secrets/
+
+# File di ambiente con password e token
+.env
+*.env
+!.env.example
+
+# File di password e htpasswd
+htpasswd
+*.htpasswd
+
+# Chiavi private SSH e TLS
+*.key
+*.pem
+*.p12
+*.pfx
+id_*
+
+# Token, secret e credenziali OCI
+*.oci_private_key
+oci_api_key.pem
+
+# File generati con password in chiaro (es. output htpasswd)
+auth/
+!**/runner*/**/auth/
+
+# ── Sistema operativo ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor e IDE ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# ── Docker ─────────────────────────────────────────────────────────
+# Dati persistenti dei container (volume data)
+**/data/
+**/lib/
+**/cache/
+**/pgdata/
+**/certificates/
+
+# Retained backups locali
+*.tar.gz
+*.tar
+*.tgz
+
+# ── Log e temporanei ───────────────────────────────────────────────
+*.log
+*.tmp
+/tmp/
+
+# ── Terraform / IaC (futuro) ───────────────────────────────────────
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# ── Node.js (se progetti futuri) ───────────────────────────────────
+node_modules/
+dist/
+build/
+
+# ── opencode ────────────────────────────────────────────────────────
+.opencode/
