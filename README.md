@@ -93,7 +93,7 @@ Configurare manualmente un server con reverse proxy, certificati, registry, Git,
 | Monitoring | Netdata | v2 stable |
 | Notifiche | Telegram Bot API | - |
 | Backup | OCI CLI (snap) | - |
-| Application | CineBase (.NET 10) | [github.com/<UTENTE>/cinebase](https://github.com/<UTENTE>/cinebase) |
+| Application | CineBase (.NET 10) | [github.com/malafronte/cinebase](https://github.com/malafronte/cinebase) |
 
 ---
 
@@ -410,7 +410,7 @@ Backup notturno (cron alle 3:00) su OCI Object Storage:
 
 | Repository | Relazione |
 |---|---|
-| [github.com/<UTENTE>/cinebase](https://github.com/<UTENTE>/cinebase) | Progetto CineBase, deployato su questo server. Contiene il workflow CI/CD (`.forgejo/workflows/deploy.yml`) e la documentazione OCI (`infra/oci/README.md`) |
+| [github.com/malafronte/cinebase](https://github.com/malafronte/cinebase) | Progetto CineBase, deployato su questo server. Contiene il workflow CI/CD (`.forgejo/workflows/deploy.yml`) e la documentazione OCI (`infra/oci/README.md`) |
 
 ---
 
