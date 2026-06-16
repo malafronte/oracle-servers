@@ -208,6 +208,7 @@ services:
       - LANG=${WALINE_LANG}
       - SECURE_DOMAINS=${SITE_DOMAIN},${WALINE_DOMAIN}
       # Sicurezza e moderazione
+      - LOGIN=force
       - COMMENT_RATE_LIMIT=${COMMENT_RATE_LIMIT:-60}
     networks:
       - internal
