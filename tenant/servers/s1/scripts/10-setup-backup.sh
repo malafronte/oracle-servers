@@ -59,7 +59,7 @@ cat > "$DOCKER_DIR/backup.sh" << BACKUPEOF
 #!/bin/bash
 # =============================================================================
 # backup.sh — Backup giornaliero su OCI Object Storage
-# Esegue il backup di: registry, postgres, forgejo
+# Esegue il backup di: registry, postgres, forgejo, analytics (Waline + Umami)
 # =============================================================================
 set -e
 
@@ -70,7 +70,17 @@ RETENTION_DAYS=7
 
 echo "[\$(date)] Inizio backup..." | tee -a "\$LOG_FILE"
 
-# Backup dei dati critici:
+# ── Backup analitico PostgreSQL (Waline + Umami) ──────────────────────────
+ANALYTICS_DUMP="/tmp/analytics-\$(date +%Y%m%d).sql"
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'analytics-postgres'; then
+  docker exec analytics-postgres pg_dumpall -U analytics > "\$ANALYTICS_DUMP" 2>/dev/null && \
+    echo "[\$(date)] Dump analytics PostgreSQL: \$(du -h "\$ANALYTICS_DUMP" | cut -f1)" | tee -a "\$LOG_FILE" || \
+    echo "[\$(date)] ERRORE: dump analytics fallito" | tee -a "\$LOG_FILE"
+else
+  echo "[\$(date)] Container analytics-postgres non trovato, skip backup analytics." | tee -a "\$LOG_FILE"
+fi
+
+# ── Backup file (registry, forgejo, postgres) ─────────────────────────────
 # - Immagini Docker Registry (registry/data/)
 # - Credenziali htpasswd (registry/auth/)
 # - Database PostgreSQL Forgejo (postgres/)
@@ -83,7 +93,7 @@ tar czf "\$BACKUP_FILE" \
   forgejo/data/ \
   2>/dev/null || true
 
-# Se OCI CLI è disponibile, carica il backup
+# Se OCI CLI è disponibile, carica entrambi i backup
 if command -v oci &> /dev/null; then
   echo "[\$(date)] Caricamento backup su OCI..." | tee -a "\$LOG_FILE"
   oci os object put \
@@ -93,6 +103,17 @@ if command -v oci &> /dev/null; then
     --auth instance_principal \
     --force \
     2>&1 | tee -a "\$LOG_FILE"
+
+  if [ -f "\$ANALYTICS_DUMP" ]; then
+    oci os object put \
+      --bucket-name "\$BUCKET" \
+      --file "\$ANALYTICS_DUMP" \
+      --name "analytics/\$(date +%Y%m%d).sql" \
+      --auth instance_principal \
+      --force \
+      2>&1 | tee -a "\$LOG_FILE"
+    rm "\$ANALYTICS_DUMP"
+  fi
 else
   echo "[\$(date)] OCI CLI non disponibile, backup salvato solo localmente: \$BACKUP_FILE" | tee -a "\$LOG_FILE"
 fi

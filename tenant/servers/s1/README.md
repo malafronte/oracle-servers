@@ -134,6 +134,8 @@ chmod +x *.sh
 ./07-setup-forgejo.sh        # Avvia Forgejo + PostgreSQL + runner CI/CD
 ./08-setup-netdata.sh        # Avvia Netdata (monitoring)
 ./10-setup-backup.sh         # Configura backup automatico su OCI
+./11-setup-analytics.sh      # Waline (commenti) + Umami (analytics) + PostgreSQL
+./12-setup-landing.sh        # Landing page malafronte.eu con redirect www
 ```
 
 ---
@@ -152,6 +154,8 @@ chmod +x *.sh
 | `08-setup-netdata.sh`      | Configura e avvia Netdata con allarmi                  |
 | `09-progetto-template.sh`  | Crea struttura per nuovo progetto (dominio configurabile) |
 | `10-setup-backup.sh`       | Crea lo script di backup e il cron job                 |
+| `11-setup-analytics.sh`    | Waline + Umami + PostgreSQL (commenti e analytics)     |
+| `12-setup-landing.sh`      | Landing page malafronte.eu con redirect www            |
 | `deploy.sh`                | Helper per deploy rapido di un progetto                |
 | `backup.sh`                | Script di backup eseguibile manualmente                |
 
@@ -183,8 +187,21 @@ Dopo l'esecuzione, il server avrà questa struttura:
 │   ├── data/
 │   ├── runner1/
 │   └── runner2/
+├── analytics/
+│   ├── docker-compose.yml
+│   ├── .env
+│   ├── init-db.sql
+│   └── waline.pgsql
+├── cinebase/              # (se deployato)
+│   └── docker-compose.yml
+├── landing/
+│   ├── docker-compose.yml
+│   ├── index.html
+│   └── nginx.conf
 ├── deploy.sh
-└── backup.sh
+├── backup.sh
+└── postgres/              # (condiviso con forgejo)
+    └── data/
 ```
 
 ---

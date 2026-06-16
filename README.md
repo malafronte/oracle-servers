@@ -45,36 +45,38 @@ Configurare manualmente un server con reverse proxy, certificati, registry, Git,
 
 ## Architettura
 
-```
-                              Internet
-                                 │
-                                 ▼
-                         ┌───────────────┐
-                         │    Traefik    │  reverse proxy
-                         │   :80 / :443  │  Let's Encrypt
-                         │   Dashboard 🔒│
-                         └───┬───┬───┬───┘
-                             │   │   │
-        ┌────────────────────┘   │   └────────────────────┐
-        ▼                        ▼                        ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-│  Portainer   │  │   Netdata    │  │   Forgejo    │  │  CineBase        │
-│  :9000       │  │   :19999 🔒  │  │   :3000      │  │  www.<DOMINIO_APP> │
-└──────────────┘  │  Allarmi     │  └──────┬───────┘  │  api.<DOMINIO_APP>  │
-                  │  Telegram    │         │          └────────┬─────────┘
-                  └──────────────┘  ┌──────┴───────┐          │
-                                    │ PostgreSQL 16│    ┌─────┴──────┐
-┌──────────────┐                    │ Runner 1     │    │ MariaDB    │
-│   Registry   │                    │ Runner 2     │    │ 10.11      │
-│   :5000 🔒   │                    └──────────────┘    └────────────┘
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│ OCI Object   │  backup notturno
-│ Storage      │  (quota 10 GB)
-│ s1-backup    │
-└──────────────┘
+```mermaid
+graph TD
+    NET[Internet] --> TF[Traefik v3<br/>:80 → :443<br/>Let's Encrypt]
+
+    TF --> LAND[Landing page<br/>nginx :80<br/><DOMINIO> / www.<DOMINIO>]
+    TF --> PORT[Portainer CE<br/>:9000]
+    TF --> FORG[Forgejo v15<br/>git.<DOMINIO> :3000]
+    TF --> NETD[Netdata v2<br/>monitor.<DOMINIO> :19999 🔒]
+    TF --> CINE[CineBase<br/>www.<DOMINIO_APP><br/>api.<DOMINIO_APP> :8080]
+    TF --> ANAL[Analytics island<br/>comments.<SITO_WEB><br/>analytics.<SITO_WEB>]
+
+    FORG --> PGFORGE[(PostgreSQL 16<br/>forgejo)]
+    FORG --> RUN1(Runner 1)
+    FORG --> RUN2(Runner 2)
+
+    NETD --> TG(Telegram Bot)
+
+    CINE --> MARIA[(MariaDB 10.11)]
+
+    ANAL --> WAL[Waline :8360]
+    ANAL --> UMA[Umami :3000]
+    WAL --> PGANA[(PostgreSQL 16<br/>waline + umami)]
+    UMA --> PGANA
+
+    REG[Registry :5000 🔒] --> BKP
+    PGFORGE --> BKP[backup.sh<br/>cron 3:00]
+    PGANA --> BKP
+    BKP --> OCI[OCI Object Storage<br/>s1-backup 10 GB]
+
+    style TF fill:#1a365d,color:#fff
+    style BKP fill:#744210,color:#fff
+    style OCI fill:#1a4731,color:#fff
 ```
 
 ### Stack tecnologico
@@ -94,6 +96,9 @@ Configurare manualmente un server con reverse proxy, certificati, registry, Git,
 | Notifiche | Telegram Bot API | - |
 | Backup | OCI CLI (snap) | - |
 | Application | CineBase (.NET 10) | [github.com/malafronte/cinebase](https://github.com/malafronte/cinebase) |
+| Comment System | Waline (PostgreSQL) | [waline.js.org](https://waline.js.org) |
+| Web Analytics | Umami (PostgreSQL) | [umami.is](https://umami.is) |
+| Landing | Nginx | `malafronte.eu` welcome page |
 
 ---
 
@@ -109,6 +114,10 @@ Configurare manualmente un server con reverse proxy, certificati, registry, Git,
 | `monitor.<DOMINIO>` | Netdata | `netdata` | 19999 | 🔒 Basic auth |
 | `www.<DOMINIO_APP>` | CineBase Frontend | `cinebase-web` | 8080 | Pubblico |
 | `api.<DOMINIO_APP>` | CineBase API | `cinebase-filmapi` | 8080 | Pubblico (health check) |
+| `comments.<SITO_WEB>` | Waline (commenti) | `analytics-waline` | 8360 | Pubblico (login obbligatorio) |
+| `analytics.<SITO_WEB>` | Umami (analytics) | `analytics-umami` | 3000 | 🔒 Login admin |
+| `<DOMINIO>` | Landing page | `landing` | 80 | Pubblico |
+| `www.<DOMINIO>` | Redirect → `<DOMINIO>` | `landing` | 80 | Pubblico (301) |
 
 ---
 
@@ -130,6 +139,8 @@ Gli script vanno eseguiti in ordine. Ogni script è **idempotente** (puoi rieseg
 | 08 | `08-setup-netdata.sh` | Netdata v2 + allarmi + Telegram + check backup | 04 |
 | 09 | `09-setup-cinebase.sh` | Stack CineBase (primo deploy) | 04, 06, 07 |
 | 10 | `10-setup-backup.sh` | Backup automatico su OCI Object Storage | OCI CLI |
+| 11 | `11-setup-analytics.sh` | Waline + Umami + PostgreSQL (commenti e analytics) | 04 |
+| 12 | `12-setup-landing.sh` | Landing page malafronte.eu con redirect www | 04 |
 
 ### Come eseguire uno script
 
@@ -168,6 +179,7 @@ echo "UUID: $UUID  Secret: $SECRET"
 | [`guida-traefik-completa.md`](tenant/docs/guida-traefik-completa.md) | Traefik dalla A alla Z: router, services, middlewares, certs, basic auth |
 | [`guida-cicd-forgejo-actions.md`](tenant/docs/guida-cicd-forgejo-actions.md) | CI/CD con Forgejo Actions: runner, workflow, secrets, errori, fix |
 | [`guida-primo-deploy-cinebase.md`](tenant/docs/guida-primo-deploy-cinebase.md) | Primo deploy CineBase: merge .env, build manuale, fix post-avvio |
+| [`guida-deploy-waline-umami.md`](tenant/docs/guida-deploy-waline-umami.md) | Deploy Waline + Umami + PostgreSQL: DNS, script, post-deploy, backup |
 | [`guida-telegram-bot.md`](tenant/docs/guida-telegram-bot.md) | Bot Telegram: creazione, curl, emoji, Netdata, check-backup |
 | [`lessons-learned.md`](tenant/docs/lessons-learned.md) | Lezioni apprese: cosa rifarei diversamente se ricominciassi da zero |
 | [`oci-always-free-risorse.md`](tenant/docs/oci-always-free-risorse.md) | Risorse OCI Always Free: limiti, quote, strategia |
@@ -203,11 +215,15 @@ echo "UUID: $UUID  Secret: $SECRET"
 │   └── servers/s1/                     # 🖥️ Configurazione server s1
 │       ├── .env                        # 🔒 Gitignorato — variabili reali
 │       ├── .env.example                # Template con placeholder
-│       ├── scripts/                    # 🔧 Script di setup (01-10)
+│       ├── scripts/                    # 🔧 Script di setup (01-12)
 │       │   ├── 01-prerequisiti.sh
 │       │   ├── 02-installa-docker.sh
 │       │   ├── ...
-│       │   └── 09-setup-cinebase.sh
+│       │   ├── 09-setup-cinebase.sh
+│       │   ├── 11-setup-analytics.sh
+│       │   └── 12-setup-landing.sh
+│       ├── analytics/                   # Template .env per Waline + Umami
+│       │   └── .env.example
 │       ├── cinebase/                   # Template .env per CineBase
 │       │   └── .env.example
 │       └── oci-setup/                  # Configurazione OCI (bucket, IAM)
