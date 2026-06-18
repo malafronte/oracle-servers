@@ -274,8 +274,9 @@ Per caricare i backup dal server, serve OCI CLI anche lì. L'approccio più puli
 **Sul server (`ssh ubuntu@<IP_SERVER>`):**
 
 ```bash
-# Installa OCI CLI (via snap, già presente su Ubuntu 24.04)
-sudo snap install oci-cli --classic
+# Installa OCI CLI (script ufficiale Oracle; lo snap oci-cli è deprecato e non più disponibile)
+bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+hash -r   # ricarica tabella comandi
 
 # Verifica
 oci --version
@@ -293,8 +294,9 @@ oci --version
    - Nome: `registry-backup-policy`
    - Policy:
      ```
-     Allow dynamic-group docker-registry-vm to manage objects in compartment <nome-tenancy> where target.bucket.name='docker-registry-backup'
+     Allow dynamic-group docker-registry-vm to manage objects in tenancy where target.bucket.name='docker-registry-backup'
      ```
+     (In una policy nel root tenancy si usa la keyword `tenancy`, non `compartment <nome-tenancy>`.)
 
 **Sul server**, verifica che l'Instance Principal funzioni:
 

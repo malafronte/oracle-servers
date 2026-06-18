@@ -1029,15 +1029,16 @@ oci os bucket create --name <NOME_BUCKET> --compartment-id <OCID_TENANCY>
    - Nome: `<NOME_POLICY>`
    - Policy:
    ```
-   Allow dynamic-group <NOME_DYNAMIC_GROUP> to manage objects in compartment <nome-tenancy> where target.bucket.name='<NOME_BUCKET>'
+   Allow dynamic-group <NOME_DYNAMIC_GROUP> to manage objects in tenancy where target.bucket.name='<NOME_BUCKET>'
    ```
-   (Per `<nome-tenancy>` usa il nome del tuo tenancy, lo trovi in Profile → Tenancy)
+   (In una policy nel root tenancy si usa la keyword `tenancy`, non `compartment <nome-tenancy>`, altrimenti si ottiene l'errore `Compartment {nome} does not exist or is not part of the policy compartment subtree`.)
 
 **Sul server:**
 
 ```bash
-# Installa OCI CLI
-sudo snap install oci-cli --classic
+# Installa OCI CLI (script ufficiale Oracle; lo snap oci-cli è deprecato)
+bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+hash -r   # ricarica tabella comandi
 
 # Verifica che l'Instance Principal funzioni
 oci os object list --bucket-name <NOME_BUCKET> --auth instance_principal
@@ -1046,82 +1047,51 @@ oci os object list --bucket-name <NOME_BUCKET> --auth instance_principal
 
 ### 10.3 Script di backup
 
-Crea `~/docker/backup.sh`:
+**Non creare `~/docker/backup.sh` a mano**: lo script `10-setup-backup.sh` lo genera automaticamente con la versione corretta e aggiornata. Eseguilo sul server dopo aver configurato bucket, Dynamic Group e policy (vedi §10.2):
 
 ```bash
-#!/bin/bash
-set -e
-
-BUCKET="<NOME_BUCKET>"
-BACKUP_FILE="/tmp/<NOME_BUCKET>-$(date +%Y-%m-%d).tar.gz"
-LOG_FILE="/home/ubuntu/docker/backup.log"
-RETENTION_DAYS=7
-
-echo "[$(date)] Inizio backup..." | tee -a "$LOG_FILE"
-
-# Cosa backuppare:
-# - Immagini Docker Registry
-# - Dati PostgreSQL (repositori Forgejo, utenti, issues)
-# - Configurazione Forgejo
-# - Eventuali volumi dati dei progetti (es. pgdata, uploads)
-
-tar czf "$BACKUP_FILE" \
-  -C /home/ubuntu/docker \
-  registry/data/ \
-  registry/auth/ \
-  postgres/ \
-  forgejo/data/ \
-  2>/dev/null || true
-
-# Carica su OCI Object Storage
-oci os object put \
-  --bucket-name "$BUCKET" \
-  --file "$BACKUP_FILE" \
-  --name "<NOME_BUCKET>-$(date +%Y-%m-%d).tar.gz" \
-  --auth instance_principal \
-  --force \
-  2>&1 | tee -a "$LOG_FILE"
-
-# Pulisci backup locali vecchi
-find /tmp -name "<NOME_BUCKET>-*" -mtime +$RETENTION_DAYS -delete 2>/dev/null || true
-
-echo "[$(date)] Backup completato: $(du -h "$BACKUP_FILE" | cut -f1)" | tee -a "$LOG_FILE"
+bash ~/scripts/10-setup-backup.sh
 ```
 
-```bash
-chmod +x ~/docker/backup.sh
-```
+Lo script generato (`~/docker/backup.sh`) fa il backup di:
+
+- PostgreSQL Forgejo (`pg_dumpall` consistente)
+- PostgreSQL Analytics Waline+Umami (`pg_dumpall`)
+- MariaDB CineBase (`mariadb-dump`)
+- Volume `cinebase_*media-uploads` (cover immagini)
+- `forgejo/data` (allegati, LFS)
+- `registry/auth` (htpasswd)
+- `traefik/certificates` (`acme.json`, per evitare rate limit Let's Encrypt)
+
+I file root-only (`acme.json` 0600, dati forgejo di `opc`) sono letti via container Docker helper (gira come root), senza sudo sul server. L'upload avviene via Instance Principal. La retention è gestita dallo script stesso (3 giorni locale, 30 giorni remota).
+
+> **Importante**: la versione precedente di questa guida mostrava un `backup.sh` manuale che includeva `registry/data/` (immagini Docker, ricostruibili dal CI/CD — gonfierebbe il backup) e usava il path errato `postgres/` (quello corretto è `postgres/data/`, ma è comunque sostituito dal dump SQL consistente). Quella versione è **obsoleta e buggata**: usare solo `10-setup-backup.sh`.
 
 ### 10.4 Automatizzare con cron
 
+`10-setup-backup.sh` configura già il cron job (`0 3 * * * ~/docker/backup.sh`). Verifica:
+
 ```bash
-# Backup notturno alle 3:00
-(crontab -l 2>/dev/null; echo "0 3 * * * /home/ubuntu/docker/backup.sh") | crontab -
+crontab -l | grep backup
 ```
 
 ### 10.5 Ripristino da backup
 
-Se devi ricostruire il server:
+La procedura completa di restore (download archivio, restore dei singoli DB, restore dei file statici via container helper per preservare i permessi) è documentata in [`guida-backup-oci.md` §11](guida-backup-oci.md). Le operazioni fondamentali:
 
 ```bash
-# 1. Installa OCI CLI (snap) e configura Instance Principal (punto 9.2)
-# 2. Scarica l'ultimo backup
-oci os object list --bucket-name <NOME_BUCKET> --auth instance_principal --all | \
-  jq -r '.data | sort_by(.["time-created"]) | last | .name'
-# Esempio output: <NOME_BUCKET>-2026-06-07.tar.gz
-
-oci os object get --bucket-name <NOME_BUCKET> --name "<NOME_BUCKET>-2026-06-07.tar.gz" \
+# 1. Scarica il backup dal bucket (sostituisci YYYY-MM-DD con la data reale,
+#    o usa $(date +%Y-%m-%d) per quello di oggi)
+oci os object get --bucket-name <NOME_BUCKET> \
+  --name "s1-backup-$(date +%Y-%m-%d).tar.gz" \
   --file /tmp/restore.tar.gz --auth instance_principal
 
-# 3. Ferma i container e ripristina
-cd ~/docker
-docker compose -f traefik/docker-compose.yml down || true
-docker compose -f registry/docker-compose.yml down || true
-docker compose -f forgejo/docker-compose.yml down || true
-sudo tar xzf /tmp/restore.tar.gz
-docker compose -f traefik/docker-compose.yml up -d
-docker compose -f registry/docker-compose.yml up -d
-docker compose -f forgejo/docker-compose.yml up -d
+# 2. Estrai
+mkdir -p /tmp/restore && tar xzf /tmp/restore.tar.gz -C /tmp/restore
+
+# 3. Restore dei DB e dei file statici: vedi guida-backup-oci.md §11
+#    (ogni DB ha la sua procedura, i file statici vanno estratti via container
+#    helper per preservare ownership/permessi di acme.json e forgejo/data)
 ```
 
 ---
@@ -1164,21 +1134,33 @@ docker compose -f forgejo/docker-compose.yml up -d
 
 #### Cosa include il backup notturno
 
-| Percorso | Contenuto |
-|----------|-----------|
-| `registry/data/` | Immagini Docker del registry privato |
-| `registry/auth/` | Credenziali htpasswd per l'accesso al registry |
-| `postgres/` | Database PostgreSQL di Forgejo (repo Git, utenti, issue, PR, milestone, configurazione) |
-| `forgejo/data/` | Allegati, avatar, configurazioni aggiuntive di Forgejo (ridondante con PostgreSQL, ma prudenziale) |
+L'archivio `s1-backup-YYYY-MM-DD.tar.gz` generato da `~/docker/backup.sh` contiene:
+
+| Componente | Strategia | Contenuto |
+|---|---|---|
+| `forgejo-postgres-YYYYMMDD.sql` | `pg_dumpall` via `docker exec` | DB Forgejo: repo Git, utenti, issue, PR, milestone |
+| `analytics-postgres-YYYYMMDD.sql` | `pg_dumpall` via `docker exec` | DB Waline (commenti) + Umami (analytics) |
+| `cinebase-mariadb-YYYYMMDD.sql` | `mariadb-dump` via `docker exec` | DB CineBase: catalogo, utenti, ordini |
+| `cinebase-media-uploads-YYYYMMDD.tar.gz` | `tar` via container helper | Volume cover immagini CineBase |
+| `forgejo-data.tar.gz` | `tar` via container helper | Allegati, avatar, LFS di Forgejo |
+| `registry-auth.tar.gz` | `tar` via container helper | htpasswd del registry |
+| `traefik-certificates.tar.gz` | `tar` via container helper | `acme.json` (cert Let's Encrypt, evita rate limit) |
+
+I dump SQL sono **consistenti** (snapshot atomico), non copie a caldo dei file. I file statici sono letti via container Docker helper (gira come root) per gestire `acme.json` 0600 di root e i dati di forgejo di proprietà di `opc` — niente sudo sul server.
+
+Dettagli completi di setup, retention e restore in [`guida-backup-oci.md`](guida-backup-oci.md).
 
 #### Cosa **non** include il backup
 
 | Cosa | Perché |
 |------|--------|
+| `registry/data/` (immagini Docker) | Ricostruibili dal CI/CD ( Forgejo Actions fa build + push a ogni commit) |
+| `postgres/data/` raw | Sostituito dal dump SQL consistente (`forgejo-postgres-*.sql`) |
+| `forgejo/runner*/data/` | Configurazione runner CI/CD, rigenerabile con `07b-setup-forgejo-runners.sh` |
 | File di configurazione di Traefik, Portainer, Netdata | Sono file di testo. Vanno **versionati su Forgejo stesso** così hai storico e puoi ripristinarli clonando il repo |
-| Volumi dati dei progetti (`cinebase/pgdata/`, `blog/uploads/`, ecc.) | Ogni progetto è diverso. Man mano che crei progetti, **aggiungi i loro volumi critici** allo script `backup.sh` oppure lascia che ogni progetto gestisca il suo backup separato |
+| Volumi dati di eventuali progetti futuri | Ogni progetto è diverso. Man mano che crei nuovi progetti, **aggiungi i loro volumi critici** a `10-setup-backup.sh` (e ri-eseguilo) oppure lascia che ogni progetto gestisca il suo backup separato. CineBase è già coperto (MariaDB + media-uploads) |
 
-> **Filosofia**: il backup copre i dati che **non puoi rigenerare** (immagini registry, database utenti, repo Git, credenziali). I Dockerfile e il codice sorgente sono già su Forgejo — si ricostruiscono. I file di configurazione vanno versionati. I volumi applicativi vanno aggiunti progetto per progetto.
+> **Filosofia**: il backup copre i dati che **non puoi rigenerare** (database, repo Git, credenziali, allegati, certificati). I Dockerfile e il codice sorgente sono già su Forgejo — si ricostruiscono. I file di configurazione vanno versionati. I volumi applicativi di nuovi progetti vanno aggiunti progetto per progetto.
 
 ### 11.2 Stato dei container
 

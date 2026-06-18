@@ -94,7 +94,7 @@ graph TD
 | Database | PostgreSQL 16 + MariaDB 10.11 | - |
 | Monitoring | Netdata | v2 stable |
 | Notifiche | Telegram Bot API | - |
-| Backup | OCI CLI (snap) | - |
+| Backup | OCI CLI (script Oracle) | - |
 | Application | CineBase (.NET 10) | [github.com/malafronte/cinebase](https://github.com/malafronte/cinebase) |
 | Comment System | Waline (PostgreSQL) | [waline.js.org](https://waline.js.org) |
 | Web Analytics | Umami (PostgreSQL) | [umami.is](https://umami.is) |
@@ -180,6 +180,7 @@ echo "UUID: $UUID  Secret: $SECRET"
 | [`guida-cicd-forgejo-actions.md`](tenant/docs/guida-cicd-forgejo-actions.md) | CI/CD con Forgejo Actions: runner, workflow, secrets, errori, fix |
 | [`guida-primo-deploy-cinebase.md`](tenant/docs/guida-primo-deploy-cinebase.md) | Primo deploy CineBase: merge .env, build manuale, fix post-avvio |
 | [`guida-deploy-waline-umami.md`](tenant/docs/guida-deploy-waline-umami.md) | Deploy Waline + Umami + PostgreSQL: DNS, script, post-deploy, backup |
+| [`guida-backup-oci.md`](tenant/docs/guida-backup-oci.md) | Backup automatico su OCI Object Storage: bucket, IAM, script, retention, restore |
 | [`guida-telegram-bot.md`](tenant/docs/guida-telegram-bot.md) | Bot Telegram: creazione, curl, emoji, Netdata, check-backup |
 | [`lessons-learned.md`](tenant/docs/lessons-learned.md) | Lezioni apprese: cosa rifarei diversamente se ricominciassi da zero |
 | [`oci-always-free-risorse.md`](tenant/docs/oci-always-free-risorse.md) | Risorse OCI Always Free: limiti, quote, strategia |
@@ -408,17 +409,27 @@ Netdata è accessibile su `https://monitor.<DOMINIO>` (protetto da basic auth).
 
 ## Backup
 
-Backup notturno (cron alle 3:00) su OCI Object Storage:
+Backup notturno (cron alle 3:00) su OCI Object Storage (`s1-backup`, 10 GB Always Free). Lo script `~/docker/backup.sh` è generato da [`10-setup-backup.sh`](tenant/servers/s1/scripts/10-setup-backup.sh); la procedura completa di setup è in [`guida-backup-oci.md`](tenant/docs/guida-backup-oci.md).
 
-| Cosa | Perché |
-|---|---|
-| `postgres/` (database Forgejo) | Repo Git, utenti, issue — non ricostruibili |
-| `forgejo/data/` | Allegati, avatar, config |
-| `registry/auth/` | Credenziali htpasswd |
+**Cosa viene backuppato** (dump consistente + tar):
+
+| Cosa | Strategia | Perché |
+|---|---|---|
+| PostgreSQL Forgejo (`forgejo-db`) | `pg_dumpall` via `docker exec` | Repo Git, utenti, issue — non ricostruibili |
+| PostgreSQL Analytics (`analytics-postgres`) | `pg_dumpall` via `docker exec` | Commenti Waline + dati Umami |
+| MariaDB CineBase (`cinebase-mariadb`) | `mariadb-dump` via `docker exec` | Catalogo, utenti, ordini |
+| `forgejo/data/` | tar | Allegati, avatar, LFS |
+| `registry/auth/` | tar | Credenziali htpasswd |
+| `traefik/certificates/` | tar | `acme.json` (evita rate limit Let's Encrypt) |
+| `cinebase_*media-uploads` (volume) | tar via container helper | Cover immagini caricate |
 
 **Non backuppato** (ricostruibile):
 - `registry/data/` — immagini Docker, rebuildate dal CI/CD
-- Configurazioni Traefik — versionate su Forgejo
+- `postgres/data/` raw — sostituito dal dump SQL consistente
+- `forgejo/runner*/data/` — config runner CI/CD
+- Configurazioni Traefik (`traefik.yml`, `dashboard.yml`) — versionate su Forgejo
+
+**Retention**: 3 giorni in locale (`~/backup/`), 30 giorni su OCI via lifecycle policy del bucket. Allarme Netdata/Telegram se la dimensione supera 9 GB (quota 10 GB).
 
 ---
 

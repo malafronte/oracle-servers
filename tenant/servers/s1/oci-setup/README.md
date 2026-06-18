@@ -84,11 +84,13 @@ Vai su **Console OCI → Identity & Security → Policies → Create Policy**:
 - **Nome**: `s1-backup-policy`
 - **Descrizione**: `Permette al server s1 di gestire oggetti nel bucket ${BACKUP_BUCKET_NAME}`
 - **Compartment**: il tuo tenancy root
-- **Policy** (sostituisci `<nome-tenancy>` con il nome del tuo tenancy — lo trovi in Profile → Tenancy):
+- **Policy** (la policy è nel root tenancy, quindi usa la keyword `tenancy`, non `compartment <nome>`):
   ```
-  Allow dynamic-group server-s1 to manage objects in compartment <nome-tenancy> where target.bucket.name='NOME_BUCKET'
+  Allow dynamic-group server-s1 to manage objects in tenancy where target.bucket.name='NOME_BUCKET'
   ```
   Il nome bucket è nella variabile `${BACKUP_BUCKET_NAME}`.
+
+> **Nota**: in una policy creata nel root tenancy, le statements devono usare `tenancy`. Usare `compartment <nome-tenancy>` produce l'errore `Compartment {nome} does not exist or is not part of the policy compartment subtree`.
 
 ## 3. Verificare l'Instance Principal sul server
 
@@ -106,8 +108,9 @@ ssh -i $env:S1_SSH_KEY $env:S1_SSH_USER@$env:S1_IP
 
 Poi sul server:
 ```bash
-# Installa OCI CLI
-sudo snap install oci-cli --classic
+# Installa OCI CLI (script ufficiale Oracle; lo snap oci-cli è deprecato)
+bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+hash -r   # ricarica tabella comandi
 
 # Verifica che l'Instance Principal funzioni
 oci os object list --bucket-name ${BACKUP_BUCKET_NAME} --auth instance_principal
@@ -123,12 +126,18 @@ Se ricevi un errore di autorizzazione:
 ## 4. Installare la OCI CLI sul server (via Snap)
 
 ```bash
-# Sul server:
-sudo snap install oci-cli --classic
+# Sul server (come utente ubuntu, NO sudo):
+bash -c "$(curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh)" -- --accept-all-defaults
+
+# Ricarica la shell per aggiornare il PATH
+hash -r
 
 # Verifica
 oci --version
+which oci   # -> /home/ubuntu/bin/oci
 ```
+
+Lo snap `oci-cli` è deprecato e non più disponibile sullo store. Lo script Oracle installa in `~/bin/oci` dell'utente corrente (crea un virtualenv dedicato in `~/.cli_virtualenv`) e aggiorna `~/.bashrc` con il PATH. Lo script `~/docker/backup.sh` esporta già `~/bin` nel PATH per funzionare correttamente dal cron (che ha PATH minimale).
 
 Dopo questo setup, lo script `10-setup-backup.sh` sul server potrà usare
 `oci os object put --auth instance_principal` per caricare i backup.
