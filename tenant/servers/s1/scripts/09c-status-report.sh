@@ -223,11 +223,12 @@ REPORTEOF
 chmod +x "$DOCKER_DIR/status-report.sh"
 echo "   $DOCKER_DIR/status-report.sh creato."
 
-# ── 3. Cron job per report ogni lunedì alle 8:00 ─────────────────────────
+# ── 3. Cron job per report ogni giorno alle 17:00 ───────────────────────
 echo ">> Configurazione cron job (report giornaliero alle 17:00)..."
 CRON_LINE="0 17 * * * $DOCKER_DIR/status-report.sh"
-(crontab -l 2>/dev/null | grep -v 'status-report.sh' || true; echo "$CRON_LINE") | crontab -
-echo "   Cron job configurato."
+(crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'status-report.sh' || true; \
+ echo "CRON_TZ=Europe/Rome"; echo "$CRON_LINE") | crontab -
+echo "   Cron job configurato (CRON_TZ=Europe/Rome)."
 
 echo ""
 echo "=== Report giornaliero configurato ==="

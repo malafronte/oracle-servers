@@ -77,7 +77,7 @@ echo "   $CINEBASE_DIR/seed-schedule.sh creato."
 # ── 3. Cron job per seed ogni 1° e 15 del mese alle 4:00 ────────────────
 echo ">> Configurazione cron job (seed palinsesto ogni 1° e 15 del mese alle 4:00)..."
 CRON_LINE="0 4 1,15 * * $CINEBASE_DIR/seed-schedule.sh"
-(crontab -l 2>/dev/null | grep -v 'seed-schedule.sh' || true; echo "$CRON_LINE") | crontab -
+(crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'seed-schedule.sh' || true; echo "CRON_TZ=Europe/Rome"; echo "$CRON_LINE") | crontab -
 echo "   Cron job configurato."
 
 echo ""

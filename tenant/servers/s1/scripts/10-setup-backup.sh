@@ -326,7 +326,7 @@ echo "   ~/docker/deploy.sh creato."
 # ── 5. Cron job per backup notturno (3:00 Europe/Rome) ─────────────────────
 echo ">> Configurazione cron job (backup ogni giorno alle 3:00)..."
 CRON_LINE="0 3 * * * $DOCKER_DIR/backup.sh >> $BACKUP_DIR/backup.cron.log 2>&1"
-( crontab -l 2>/dev/null | grep -v 'backup.sh' || true; echo "$CRON_LINE" ) | crontab -
+( crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'backup.sh' || true; echo "CRON_TZ=Europe/Rome"; echo "$CRON_LINE" ) | crontab -
 echo "   Cron job configurato."
 
 echo ""
