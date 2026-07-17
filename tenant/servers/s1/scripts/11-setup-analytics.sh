@@ -190,6 +190,7 @@ services:
     image: lizheming/waline:latest
     container_name: analytics-waline
     restart: unless-stopped
+    init: true
     depends_on:
       postgres:
         condition: service_healthy
@@ -233,6 +234,7 @@ services:
     image: ghcr.io/umami-software/umami:postgresql-latest
     container_name: analytics-umami
     restart: unless-stopped
+    init: true
     depends_on:
       postgres:
         condition: service_healthy

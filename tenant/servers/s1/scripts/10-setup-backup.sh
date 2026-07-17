@@ -323,10 +323,10 @@ DEPLOYEOF
 chmod +x "$DOCKER_DIR/deploy.sh"
 echo "   ~/docker/deploy.sh creato."
 
-# ── 5. Cron job per backup notturno (3:00 Europe/Rome) ─────────────────────
-echo ">> Configurazione cron job (backup ogni giorno alle 3:00)..."
-CRON_LINE="0 3 * * * $DOCKER_DIR/backup.sh >> $BACKUP_DIR/backup.cron.log 2>&1"
-( crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'backup.sh' || true; echo "CRON_TZ=Europe/Rome"; echo "$CRON_LINE" ) | crontab -
+# ── 5. Cron job per backup notturno (1:00 UTC = 3:00 CEST) ────────────────
+echo ">> Configurazione cron job (backup ogni giorno alle 1:00 UTC = 3:00 CEST)..."
+CRON_LINE="0 1 * * * $DOCKER_DIR/backup.sh >> $BACKUP_DIR/backup.cron.log 2>&1"
+( crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'backup.sh' || true; echo "$CRON_LINE" ) | crontab -
 echo "   Cron job configurato."
 
 echo ""

@@ -5,7 +5,7 @@
 #
 # Cosa fa:
 #   - Genera lo script ~/docker/status-report.sh
-#   - Configura il cron job per ogni giorno alle 17:00
+#   - Configura il cron job per ogni giorno alle 15:00 UTC (17:00 CEST)
 #
 # Il report giornaliero include:
 #   - Stato di tutti i container Docker (operativi/fermi)
@@ -223,12 +223,11 @@ REPORTEOF
 chmod +x "$DOCKER_DIR/status-report.sh"
 echo "   $DOCKER_DIR/status-report.sh creato."
 
-# ── 3. Cron job per report ogni giorno alle 17:00 ───────────────────────
-echo ">> Configurazione cron job (report giornaliero alle 17:00)..."
-CRON_LINE="0 17 * * * $DOCKER_DIR/status-report.sh"
-(crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'status-report.sh' || true; \
- echo "CRON_TZ=Europe/Rome"; echo "$CRON_LINE") | crontab -
-echo "   Cron job configurato (CRON_TZ=Europe/Rome)."
+# ── 3. Cron job per report ogni giorno alle 15:00 UTC (17:00 CEST) ───────
+echo ">> Configurazione cron job (report giornaliero alle 15:00 UTC = 17:00 CEST)..."
+CRON_LINE="0 15 * * * $DOCKER_DIR/status-report.sh"
+(crontab -l 2>/dev/null | grep -v '^CRON_TZ=' | grep -v 'status-report.sh' || true; echo "$CRON_LINE") | crontab -
+echo "   Cron job configurato."
 
 echo ""
 echo "=== Report giornaliero configurato ==="
